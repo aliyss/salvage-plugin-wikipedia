@@ -83,13 +83,6 @@ async function catalogue(
 }
 
 /**
- * How the articles that link to one are written: as web links in the panel,
- * and as `[[wiki links]]` in a note, where they name notes like the rest of a
- * canvas does instead of opening a browser tab.
- */
-type LinkStyle = "links" | "wiki";
-
-/**
  * The id a card is filed under. A Salvage item id is letters, digits and
  * `._:-` only, and an article title is none of those things — `!`, `AC/DC`,
  * `Amsterdam Centraal station` — so the title is hashed into one. It stays the
@@ -100,11 +93,19 @@ export function itemIdOf(title: string): string {
   return createHash("sha256").update(title, "utf8").digest("hex");
 }
 
-/** Markdown of one article: what it is, and what links to it. */
-function articleText(
-  read: { language: string; article: Article; backlinks: string[] },
-  style: LinkStyle,
-): string {
+/**
+ * Markdown of one article: what it is, and what links to it.
+ *
+ * The articles that link to one are plain web links, not `[[wiki links]]`: in
+ * Salvage a `[[name]]` means a note on this canvas, and a Wikipedia article is
+ * not one, so it would be drawn as a link that goes nowhere. The address goes
+ * to the article that exists.
+ */
+function articleText(read: {
+  language: string;
+  article: Article;
+  backlinks: string[];
+}): string {
   const { language, article, backlinks: links } = read;
   const lines = [`# ${article.title}`];
   if (article.description) {
@@ -116,11 +117,7 @@ function articleText(
   if (links.length > 0) {
     lines.push("", "## Linked from");
     for (const title of links) {
-      lines.push(
-        style === "wiki"
-          ? `- [[${title}]]`
-          : `- [${title}](${pageUrl(language, title)})`,
-      );
+      lines.push(`- [${title}](${pageUrl(language, title)})`);
     }
   }
   lines.push("", `[Read on Wikipedia](${pageUrl(language, article.title)})`);
@@ -135,7 +132,7 @@ async function article(subject: Subject | undefined): Promise<Data> {
   const read = await readArticle(subject?.link?.url);
   return {
     kind: "wikipedia-article",
-    text: articleText(read, "links"),
+    text: articleText(read),
   };
 }
 
@@ -149,13 +146,7 @@ async function noteArticle(
   settings: Record<string, unknown>,
 ): Promise<Data> {
   if (subject?.link?.url) {
-    // A note reads the way notes here do: the articles linking to it are wiki
-    // links, so they point at notes on the canvas rather than at the web.
-    const read = await readArticle(subject.link.url);
-    return {
-      kind: "wikipedia-article",
-      text: articleText(read, "wiki"),
-    };
+    return await article(subject);
   }
 
   const language =
@@ -182,7 +173,7 @@ async function noteArticle(
   const links = await backlinks(language, found.title).catch(() => []);
   return {
     kind: "wikipedia-article",
-    text: articleText({ language, article: found, backlinks: links }, "wiki"),
+    text: articleText({ language, article: found, backlinks: links }),
   };
 }
 
