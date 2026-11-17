@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import { backlinks, pageUrl, readArticle, summaries } from "./api";
 import type { Article } from "./api";
 import { archiveOf, readTitles } from "./index";
@@ -63,7 +65,7 @@ async function catalogue(
     const cover = covers[index] ?? null;
     const extract = article?.extract ?? null;
     return {
-      id: title,
+      id: itemIdOf(title),
       title: article?.title ?? title,
       overview: extract
         ? extract.slice(0, MAX_OVERVIEW)
@@ -86,6 +88,17 @@ async function catalogue(
  * canvas does instead of opening a browser tab.
  */
 type LinkStyle = "links" | "wiki";
+
+/**
+ * The id a card is filed under. A Salvage item id is letters, digits and
+ * `._:-` only, and an article title is none of those things — `!`, `AC/DC`,
+ * `Amsterdam Centraal station` — so the title is hashed into one. It stays the
+ * same for a title from one release to the next, which is what keeps a note
+ * attached to its card.
+ */
+export function itemIdOf(title: string): string {
+  return createHash("sha256").update(title, "utf8").digest("hex");
+}
 
 /** Markdown of one article: what it is, and what links to it. */
 function articleText(

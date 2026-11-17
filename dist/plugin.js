@@ -2151,6 +2151,9 @@ var require_jpeg_js = __commonJS((exports, module) => {
   };
 });
 
+// src/plugin.ts
+import { createHash as createHash2 } from "crypto";
+
 // src/sdk.ts
 class PluginError extends Error {
   code;
@@ -2618,7 +2621,7 @@ async function catalogue(settings, paging) {
     const cover = covers[index] ?? null;
     const extract = article?.extract ?? null;
     return {
-      id: title,
+      id: itemIdOf(title),
       title: article?.title ?? title,
       overview: extract ? extract.slice(0, MAX_OVERVIEW) : article?.description ?? null,
       cover,
@@ -2630,6 +2633,9 @@ async function catalogue(settings, paging) {
     kind: "wikipedia-catalogue",
     text: JSON.stringify({ items, known: [], hasMore: page.hasMore })
   };
+}
+function itemIdOf(title) {
+  return createHash2("sha256").update(title, "utf8").digest("hex");
 }
 function articleText(read, style) {
   const { language, article, backlinks: links } = read;
@@ -2693,5 +2699,6 @@ var plugin_default = () => serve(async ({ command, params }) => {
   throw new PluginError("unsupported", `Unknown command ${command}.`);
 });
 export {
+  itemIdOf,
   plugin_default as default
 };
