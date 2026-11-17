@@ -2616,18 +2616,26 @@ async function catalogue(settings, paging) {
   const found = page.titles.map((title) => articles.get(title) ?? null);
   const covers = await keepStills(found.map((article) => article?.thumbnail ?? null));
   const colours = await coloursOf(covers);
-  const items = page.titles.map((title, index) => {
+  const cards = page.titles.map((title, index) => {
     const article = found[index] ?? null;
     const cover = covers[index] ?? null;
     const extract = article?.extract ?? null;
     return {
-      id: itemIdOf(title),
+      id: itemIdOf(article?.title ?? title),
       title: article?.title ?? title,
       overview: extract ? extract.slice(0, MAX_OVERVIEW) : article?.description ?? null,
       cover,
       color: cover ? colours[cover] ?? null : null,
-      url: pageUrl(language, title)
+      url: pageUrl(language, article?.title ?? title)
     };
+  });
+  const seen = new Set;
+  const items = cards.filter((item) => {
+    if (seen.has(item.id)) {
+      return false;
+    }
+    seen.add(item.id);
+    return true;
   });
   return {
     kind: "wikipedia-catalogue",

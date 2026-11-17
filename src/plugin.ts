@@ -60,20 +60,35 @@ async function catalogue(
   const covers = await keepStills(found.map((article) => article?.thumbnail ?? null));
   const colours = await coloursOf(covers);
 
-  const items = page.titles.map((title, index) => {
+  const cards = page.titles.map((title, index) => {
     const article = found[index] ?? null;
     const cover = covers[index] ?? null;
     const extract = article?.extract ?? null;
     return {
-      id: itemIdOf(title),
+      // Filed under the article it turned out to be, not the title that named
+      // it: the index lists redirects beside the articles they lead to, and
+      // Wikipedia answers every one of them with the same page. Filed under the
+      // asked-for title, "9/11 attacks" and "September 11 attacks" were two
+      // cards of one article, each owed its own note.
+      id: itemIdOf(article?.title ?? title),
       title: article?.title ?? title,
       overview: extract
         ? extract.slice(0, MAX_OVERVIEW)
         : (article?.description ?? null),
       cover,
       color: cover ? (colours[cover] ?? null) : null,
-      url: pageUrl(language, title),
+      url: pageUrl(language, article?.title ?? title),
     };
+  });
+
+  // Redirects that landed on the same article leave one card, not one each.
+  const seen = new Set<string>();
+  const items = cards.filter((item) => {
+    if (seen.has(item.id)) {
+      return false;
+    }
+    seen.add(item.id);
+    return true;
   });
 
   return {
