@@ -2429,6 +2429,7 @@ var import_jpeg_js = __toESM(require_jpeg_js(), 1);
 import { createHash } from "crypto";
 import { mkdir, readFile, rename, stat as stat2, writeFile } from "fs/promises";
 import { join as join2 } from "path";
+import { inflateSync } from "zlib";
 var TIMEOUT_MS2 = 1e4;
 var MAX_BYTES2 = 1500000;
 var HASH_CHARS = 32;
@@ -2441,6 +2442,28 @@ var TRANSPARENT_ALPHA = 128;
 var SAMPLE_SIZE = 64;
 var BUCKET_SHIFT = 4;
 var CHANNEL_MAX = 255;
+var PNG_SIGNATURE = [137, 80, 78, 71, 13, 10, 26, 10];
+var PNG_HEAD_BYTES = 8;
+var CHUNK_LENGTH_BYTES = 4;
+var CHUNK_TYPE_BYTES = 4;
+var CRC_BYTES = 4;
+var IHDR_WIDTH = 0;
+var IHDR_HEIGHT = 4;
+var IHDR_DEPTH = 8;
+var IHDR_KIND = 9;
+var IHDR_INTERLACE = 12;
+var BYTE = 255;
+var BYTE_BITS = 8;
+var BIT_OFFSET = 16;
+var BIT_LAST = 24;
+var DEPTH_8 = 8;
+var PNG_CHANNELS = { 0: 1, 2: 3, 3: 1, 4: 2, 6: 4 };
+var PALETTE_STEP = 3;
+var FILTER_SUB = 1;
+var FILTER_UP = 2;
+var FILTER_AVERAGE = 3;
+var FILTER_PAETH = 4;
+var AVERAGE_SHIFT = 1;
 function mediaDirectory() {
   return join2(process.env.SALVAGE_PLUGIN_DATA ?? ".", "media");
 }
@@ -2529,17 +2552,174 @@ async function keepStills(urls) {
 function channelOf(value) {
   return Math.min(CHANNEL_MAX, Math.max(0, Math.round(value))).toString(16).padStart(2, "0").toUpperCase();
 }
-function leadingColorOf(bytes) {
-  if (bytes.length < 4 || bytes[0] !== 255 || bytes[1] !== 216 || bytes[2] !== 255) {
+function readU32(bytes, at) {
+  return ((bytes[at] ?? 0) << BIT_LAST) + ((bytes[at + 1] ?? 0) << BIT_OFFSET) + ((bytes[at + 2] ?? 0) << BYTE_BITS) + (bytes[at + 3] ?? 0);
+}
+function paeth(left, up, upLeft) {
+  const guess = left + up - upLeft;
+  const toLeft = Math.abs(guess - left);
+  const toUp = Math.abs(guess - up);
+  const toCorner = Math.abs(guess - upLeft);
+  if (toLeft <= toUp && toLeft <= toCorner) {
+    return left;
+  }
+  return toUp <= toCorner ? up : upLeft;
+}
+function unfiltered(raw, width, height, channels) {
+  const stride = width * channels;
+  if (raw.length < height * (1 + stride)) {
     return null;
   }
-  let image;
+  const out = new Uint8Array(stride * height);
+  for (let y = 0;y < height; y += 1) {
+    const at = y * (1 + stride);
+    const filter = raw[at] ?? 0;
+    const line = y * stride;
+    const previous = line - stride;
+    for (let x = 0;x < stride; x += 1) {
+      const value = raw[at + 1 + x] ?? 0;
+      const left = x >= channels ? out[line + x - channels] ?? 0 : 0;
+      const up = y > 0 ? out[previous + x] ?? 0 : 0;
+      const upLeft = y > 0 && x >= channels ? out[previous + x - channels] ?? 0 : 0;
+      let restored = value;
+      if (filter === FILTER_SUB) {
+        restored = value + left;
+      } else if (filter === FILTER_UP) {
+        restored = value + up;
+      } else if (filter === FILTER_AVERAGE) {
+        restored = value + (left + up >> AVERAGE_SHIFT);
+      } else if (filter === FILTER_PAETH) {
+        restored = value + paeth(left, up, upLeft);
+      }
+      out[line + x] = restored & BYTE;
+    }
+  }
+  return out;
+}
+function paletteOf(palette, index) {
+  const at = index * PALETTE_STEP;
+  if (at + PALETTE_STEP > palette.length) {
+    return null;
+  }
+  return [palette[at] ?? 0, palette[at + 1] ?? 0, palette[at + 2] ?? 0];
+}
+function rgbaOfPng(pixels, width, height, kind, palette, alpha) {
+  const channels = PNG_CHANNELS[kind];
+  if (!channels) {
+    return null;
+  }
+  const out = new Uint8Array(width * height * RGBA_CHANNELS);
+  for (let i = 0;i < width * height; i += 1) {
+    const at = i * channels;
+    const to = i * RGBA_CHANNELS;
+    let red = 0;
+    let green = 0;
+    let blue = 0;
+    let opacity = OPAQUE_ALPHA;
+    if (kind === 0 || kind === 4) {
+      red = pixels[at] ?? 0;
+      green = red;
+      blue = red;
+      opacity = kind === 4 ? pixels[at + 1] ?? OPAQUE_ALPHA : OPAQUE_ALPHA;
+    } else if (kind === 2 || kind === 6) {
+      red = pixels[at] ?? 0;
+      green = pixels[at + 1] ?? 0;
+      blue = pixels[at + 2] ?? 0;
+      opacity = kind === 6 ? pixels[at + 3] ?? OPAQUE_ALPHA : OPAQUE_ALPHA;
+    } else {
+      const index = pixels[at] ?? 0;
+      const entry = palette ? paletteOf(palette, index) : null;
+      if (!entry) {
+        return null;
+      }
+      [red, green, blue] = entry;
+      opacity = alpha?.[index] ?? OPAQUE_ALPHA;
+    }
+    out[to] = red;
+    out[to + 1] = green;
+    out[to + 2] = blue;
+    out[to + 3] = opacity;
+  }
+  return out;
+}
+function decodePng(bytes) {
+  if (bytes.length <= PNG_HEAD_BYTES) {
+    return null;
+  }
+  for (let i = 0;i < PNG_SIGNATURE.length; i += 1) {
+    if (bytes[i] !== PNG_SIGNATURE[i]) {
+      return null;
+    }
+  }
+  let width = 0;
+  let height = 0;
+  let kind = 0;
+  let palette = null;
+  let alpha = null;
+  const parts = [];
+  let at = PNG_HEAD_BYTES;
+  while (at + CHUNK_LENGTH_BYTES + CHUNK_TYPE_BYTES <= bytes.length) {
+    const length = readU32(bytes, at);
+    const type = String.fromCharCode(bytes[at + CHUNK_LENGTH_BYTES] ?? 0, bytes[at + CHUNK_LENGTH_BYTES + 1] ?? 0, bytes[at + CHUNK_LENGTH_BYTES + 2] ?? 0, bytes[at + CHUNK_LENGTH_BYTES + 3] ?? 0);
+    const start = at + CHUNK_LENGTH_BYTES + CHUNK_TYPE_BYTES;
+    const end = start + length;
+    if (end > bytes.length) {
+      break;
+    }
+    if (type === "IHDR") {
+      width = readU32(bytes, start + IHDR_WIDTH);
+      height = readU32(bytes, start + IHDR_HEIGHT);
+      kind = bytes[start + IHDR_KIND] ?? 0;
+      const depth = bytes[start + IHDR_DEPTH] ?? 0;
+      const interlace = bytes[start + IHDR_INTERLACE] ?? 0;
+      if (depth !== DEPTH_8 || interlace !== 0) {
+        return null;
+      }
+    } else if (type === "PLTE") {
+      palette = bytes.subarray(start, end);
+    } else if (type === "tRNS") {
+      alpha = bytes.subarray(start, end);
+    } else if (type === "IDAT") {
+      parts.push(bytes.subarray(start, end));
+    } else if (type === "IEND") {
+      break;
+    }
+    at = end + CRC_BYTES;
+  }
+  if (width <= 0 || height <= 0 || parts.length === 0) {
+    return null;
+  }
+  let raw;
   try {
-    image = import_jpeg_js.decode(bytes, { useTArray: true, maxMemoryUsageInMB: 96 });
+    raw = new Uint8Array(inflateSync(Buffer.concat(parts)));
   } catch {
     return null;
   }
-  if (image.width <= 0 || image.height <= 0) {
+  const channels = PNG_CHANNELS[kind];
+  if (!channels) {
+    return null;
+  }
+  const pixels = unfiltered(raw, width, height, channels);
+  if (!pixels) {
+    return null;
+  }
+  const data = rgbaOfPng(pixels, width, height, kind, palette, alpha);
+  return data ? { width, height, data } : null;
+}
+function decodeJpeg(bytes) {
+  if (bytes.length < 4 || bytes[0] !== 255 || bytes[1] !== 216 || bytes[2] !== 255) {
+    return null;
+  }
+  try {
+    const image = import_jpeg_js.decode(bytes, { useTArray: true, maxMemoryUsageInMB: 96 });
+    return image.width > 0 && image.height > 0 ? { width: image.width, height: image.height, data: image.data } : null;
+  } catch {
+    return null;
+  }
+}
+function leadingColorOf(bytes) {
+  const image = decodeJpeg(bytes) ?? decodePng(bytes);
+  if (!image) {
     return null;
   }
   const step = Math.max(1, Math.ceil(Math.max(image.width, image.height) / SAMPLE_SIZE));
