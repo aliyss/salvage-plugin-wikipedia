@@ -1,0 +1,91 @@
+{
+  "pluginApiVersion": 1,
+  "id": "salvage-plugin-wikipedia",
+  "name": "Wikipedia",
+  "version": "0.1.0",
+  "runtime": { "entry": "dist/plugin.js" },
+  "provides": [],
+  "contributes": [
+    {
+      "id": "article",
+      "slot": "entry.detail.link.action",
+      "when": { "link.host": ["wikipedia.org"] },
+      "ui": { "kind": "button", "label": "Wikipedia", "icon": "book" },
+      "view": "text",
+      "command": "article",
+      "timeoutMs": 25000
+    }
+  ],
+  "downloads": [
+    {
+      "id": "enwiki",
+      "label": "English Wikipedia — all titles",
+      "url": "https://dumps.wikimedia.org/enwiki/latest/enwiki-latest-all-titles-in-ns0.gz",
+      "sizeBytes": 346030080
+    },
+    {
+      "id": "dewiki",
+      "label": "German Wikipedia — all titles",
+      "url": "https://dumps.wikimedia.org/dewiki/latest/dewiki-latest-all-titles-in-ns0.gz",
+      "sizeBytes": 115343360
+    },
+    {
+      "id": "frwiki",
+      "label": "French Wikipedia — all titles",
+      "url": "https://dumps.wikimedia.org/frwiki/latest/frwiki-latest-all-titles-in-ns0.gz",
+      "sizeBytes": 100663296
+    },
+    {
+      "id": "eswiki",
+      "label": "Spanish Wikipedia — all titles",
+      "url": "https://dumps.wikimedia.org/eswiki/latest/eswiki-latest-all-titles-in-ns0.gz",
+      "sizeBytes": 83886080
+    },
+    {
+      "id": "simplewiki",
+      "label": "Simple English Wikipedia — all titles",
+      "url": "https://dumps.wikimedia.org/simplewiki/latest/simplewiki-latest-all-titles-in-ns0.gz",
+      "sizeBytes": 26214400
+    }
+  ],
+  "canvas": {
+    "command": "catalogue",
+    "name": "Wikipedia",
+    "icon": "book",
+    "refreshMs": 3600000,
+    "settings": [
+      {
+        "key": "archive",
+        "kind": "select",
+        "label": "Which Wikipedia",
+        "description": "A canvas reads the title index you downloaded for this language. Download it on the plugin's own page.",
+        "default": "enwiki",
+        "options": [
+          { "value": "enwiki", "label": "English" },
+          { "value": "dewiki", "label": "German" },
+          { "value": "frwiki", "label": "French" },
+          { "value": "eswiki", "label": "Spanish" },
+          { "value": "simplewiki", "label": "Simple English" }
+        ]
+      },
+      {
+        "key": "query",
+        "kind": "text",
+        "label": "Titles containing",
+        "description": "Left empty, the canvas reads the index in title order from the start.",
+        "default": "",
+        "maxLength": 60
+      },
+      {
+        "key": "perPage",
+        "kind": "number",
+        "label": "How many titles",
+        "description": "The canvas asks for this many at a time and loads more as you scroll.",
+        "default": 30,
+        "min": 5,
+        "max": 50
+      }
+    ]
+  },
+  "settings": []
+}

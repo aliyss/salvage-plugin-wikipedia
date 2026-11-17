@@ -1,0 +1,118 @@
+import { pageUrl, readArticle, summaries } from "./api";
+import { archiveOf, readTitles } from "./index";
+import { PluginError, serve } from "./sdk";
+import { coloursOf, keepStills } from "./stills";
+
+import type { Data, Paging, Subject } from "./sdk";
+
+const DEFAULT_PER_PAGE = 30;
+const MIN_PER_PAGE = 5;
+const MAX_PER_PAGE = 50;
+const MAX_OVERVIEW = 600;
+const MAX_EXTRACT = 1_200;
+
+/** `enwiki` is English Wikipedia, `simplewiki` is Simple English. */
+function languageOf(archive: string): string {
+  return archive.replace(/wiki$/, "") || "en";
+}
+
+function perPageOf(value: unknown): number {
+  const wanted =
+    typeof value === "number" ? Math.round(value) : DEFAULT_PER_PAGE;
+  return Math.min(MAX_PER_PAGE, Math.max(MIN_PER_PAGE, wanted));
+}
+
+/** The page a canvas asked for: where it starts, and how much it holds. */
+function pageOf(
+  paging: Paging | undefined,
+  perPage: number,
+): { offset: number; limit: number } {
+  const limit = Math.min(
+    MAX_PER_PAGE,
+    Math.max(MIN_PER_PAGE, Math.round(paging?.limit ?? perPage)),
+  );
+  return { offset: Math.max(0, Math.round(paging?.offset ?? 0)), limit };
+}
+
+/**
+ * A page of the canvas: titles from the index this computer downloaded, each
+ * card filled from one batched read of Wikipedia and given the colour its lead
+ * image leads with.
+ */
+async function catalogue(
+  settings: Record<string, unknown>,
+  paging: Paging | undefined,
+): Promise<Data> {
+  const archive = archiveOf(settings.archive);
+  const perPage = perPageOf(settings.perPage);
+  const { offset, limit } = pageOf(paging, perPage);
+  const language = languageOf(archive);
+  const query = typeof settings.query === "string" ? settings.query : "";
+
+  // The list of what exists is on this computer; what each one is, is not.
+  const page = await readTitles(archive, { query, offset, limit });
+  const articles = await summaries(language, page.titles);
+
+  const found = page.titles.map((title) => articles.get(title) ?? null);
+  const covers = await keepStills(found.map((article) => article?.thumbnail ?? null));
+  const colours = await coloursOf(covers);
+
+  const items = page.titles.map((title, index) => {
+    const article = found[index] ?? null;
+    const cover = covers[index] ?? null;
+    const extract = article?.extract ?? null;
+    return {
+      id: title,
+      title: article?.title ?? title,
+      overview: extract
+        ? extract.slice(0, MAX_OVERVIEW)
+        : (article?.description ?? null),
+      cover,
+      color: cover ? (colours[cover] ?? null) : null,
+      url: pageUrl(language, title),
+    };
+  });
+
+  return {
+    kind: "wikipedia-catalogue",
+    text: JSON.stringify({ items, known: [], hasMore: page.hasMore }),
+  };
+}
+
+/**
+ * What one entry's link says: the article's own introduction, and the articles
+ * that link to it — which is what connects it to the rest of a canvas.
+ */
+async function article(subject: Subject | undefined): Promise<Data> {
+  const read = await readArticle(subject?.link?.url);
+  const article = read.article;
+
+  const lines = [`# ${article.title}`];
+  if (article.description) {
+    lines.push("", `*${article.description}*`);
+  }
+  if (article.extract) {
+    lines.push("", article.extract.slice(0, MAX_EXTRACT));
+  }
+  if (read.backlinks.length > 0) {
+    lines.push("", "## Linked from");
+    for (const title of read.backlinks) {
+      lines.push(`- [${title}](${pageUrl(read.language, title)})`);
+    }
+  }
+  lines.push("", `[Read on Wikipedia](${pageUrl(read.language, article.title)})`);
+
+  return { kind: "wikipedia-article", text: lines.join("\n") };
+}
+
+export default () =>
+  serve(async ({ command, params }) => {
+    if (command === "catalogue") {
+      return await catalogue(params.settings ?? {}, params.paging);
+    }
+    if (command === "article") {
+      return await article(params.subject);
+    }
+
+    throw new PluginError("unsupported", `Unknown command ${command}.`);
+  });
