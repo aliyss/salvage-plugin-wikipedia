@@ -2,7 +2,7 @@
   "pluginApiVersion": 1,
   "id": "salvage-plugin-wikipedia",
   "name": "Wikipedia",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "runtime": { "entry": "dist/plugin.js" },
   "provides": [
     {
@@ -31,7 +31,6 @@
     {
       "id": "article",
       "slot": "entry.detail.link.action",
-      "when": { "link.host": ["wikipedia.org"] },
       "ui": { "kind": "button", "label": "Wikipedia", "icon": "book" },
       "view": "text",
       "command": "article",
