@@ -13,6 +13,9 @@ Wikipedia only when a card is opened or an entry asks for it.
 - An **Wikipedia** button on an entry whose link is `wikipedia.org`: the
   article's introduction, and the articles that link to it — the connections
   between what is already on the canvas.
+- A **Wikipedia** section on a note, filled once from the article its title
+  names (or the one it links to). It is kept on this computer, and editing it
+  makes it yours: the plugin never writes over that copy again.
 - Every card carries its article's lead image, filed on this computer, and the
   colour that image leads with, which is what the colour view sorts by.
 

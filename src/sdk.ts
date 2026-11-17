@@ -7,6 +7,8 @@
 export type Subject = {
   canvasId?: string;
   entryId?: string;
+  /** The entry's own title, which a note names the article it is about by. */
+  title?: string;
   link?: {
     url?: string;
     provider?: string;

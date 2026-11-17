@@ -1,4 +1,5 @@
-import { pageUrl, readArticle, summaries } from "./api";
+import { backlinks, pageUrl, readArticle, summaries } from "./api";
+import type { Article } from "./api";
 import { archiveOf, readTitles } from "./index";
 import { PluginError, serve } from "./sdk";
 import { coloursOf, keepStills } from "./stills";
@@ -79,14 +80,8 @@ async function catalogue(
   };
 }
 
-/**
- * What one entry's link says: the article's own introduction, and the articles
- * that link to it — which is what connects it to the rest of a canvas.
- */
-async function article(subject: Subject | undefined): Promise<Data> {
-  const read = await readArticle(subject?.link?.url);
-  const article = read.article;
-
+/** Markdown of one article: what it is, and what links to it. */
+function articleText(language: string, article: Article, links: string[]): string {
   const lines = [`# ${article.title}`];
   if (article.description) {
     lines.push("", `*${article.description}*`);
@@ -94,15 +89,67 @@ async function article(subject: Subject | undefined): Promise<Data> {
   if (article.extract) {
     lines.push("", article.extract.slice(0, MAX_EXTRACT));
   }
-  if (read.backlinks.length > 0) {
+  if (links.length > 0) {
     lines.push("", "## Linked from");
-    for (const title of read.backlinks) {
-      lines.push(`- [${title}](${pageUrl(read.language, title)})`);
+    for (const title of links) {
+      lines.push(`- [${title}](${pageUrl(language, title)})`);
     }
   }
-  lines.push("", `[Read on Wikipedia](${pageUrl(read.language, article.title)})`);
+  lines.push("", `[Read on Wikipedia](${pageUrl(language, article.title)})`);
+  return lines.join("\n");
+}
 
-  return { kind: "wikipedia-article", text: lines.join("\n") };
+/**
+ * What one entry's link says: the article's own introduction, and the articles
+ * that link to it — which is what connects it to the rest of a canvas.
+ */
+async function article(subject: Subject | undefined): Promise<Data> {
+  const read = await readArticle(subject?.link?.url);
+  return {
+    kind: "wikipedia-article",
+    text: articleText(read.language, read.article, read.backlinks),
+  };
+}
+
+/**
+ * The article a note is about: the one its link names, or the one its title
+ * names when it has no link. This is the section the note keeps, which the app
+ * writes once and leaves alone after the user edits it.
+ */
+async function noteArticle(
+  subject: Subject | undefined,
+  settings: Record<string, unknown>,
+): Promise<Data> {
+  if (subject?.link?.url) {
+    return await article(subject);
+  }
+
+  const language =
+    typeof settings.language === "string" &&
+    /^[a-z-]{2,16}$/.test(settings.language)
+      ? settings.language
+      : "en";
+  const title = (subject?.title ?? "").trim();
+  if (!title) {
+    throw new PluginError(
+      "bad_subject",
+      "This note has no title to look an article up by.",
+    );
+  }
+
+  const found = (await summaries(language, [title])).get(title);
+  if (!found) {
+    throw new PluginError(
+      "no_data",
+      `Wikipedia has no article called “${title}”.`,
+    );
+  }
+
+  const links = await backlinks(language, found.title).catch(() => []);
+  return {
+    kind: "wikipedia-article",
+    text: articleText(language, found, links),
+  };
 }
 
 export default () =>
@@ -112,6 +159,9 @@ export default () =>
     }
     if (command === "article") {
       return await article(params.subject);
+    }
+    if (command === "note-article") {
+      return await noteArticle(params.subject, params.settings ?? {});
     }
 
     throw new PluginError("unsupported", `Unknown command ${command}.`);

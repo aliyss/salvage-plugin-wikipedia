@@ -2631,25 +2631,49 @@ async function catalogue(settings, paging) {
     text: JSON.stringify({ items, known: [], hasMore: page.hasMore })
   };
 }
-async function article(subject) {
-  const read = await readArticle(subject?.link?.url);
-  const article2 = read.article;
-  const lines = [`# ${article2.title}`];
-  if (article2.description) {
-    lines.push("", `*${article2.description}*`);
+function articleText(language, article, links) {
+  const lines = [`# ${article.title}`];
+  if (article.description) {
+    lines.push("", `*${article.description}*`);
   }
-  if (article2.extract) {
-    lines.push("", article2.extract.slice(0, MAX_EXTRACT));
+  if (article.extract) {
+    lines.push("", article.extract.slice(0, MAX_EXTRACT));
   }
-  if (read.backlinks.length > 0) {
+  if (links.length > 0) {
     lines.push("", "## Linked from");
-    for (const title of read.backlinks) {
-      lines.push(`- [${title}](${pageUrl(read.language, title)})`);
+    for (const title of links) {
+      lines.push(`- [${title}](${pageUrl(language, title)})`);
     }
   }
-  lines.push("", `[Read on Wikipedia](${pageUrl(read.language, article2.title)})`);
-  return { kind: "wikipedia-article", text: lines.join(`
-`) };
+  lines.push("", `[Read on Wikipedia](${pageUrl(language, article.title)})`);
+  return lines.join(`
+`);
+}
+async function article(subject) {
+  const read = await readArticle(subject?.link?.url);
+  return {
+    kind: "wikipedia-article",
+    text: articleText(read.language, read.article, read.backlinks)
+  };
+}
+async function noteArticle(subject, settings) {
+  if (subject?.link?.url) {
+    return await article(subject);
+  }
+  const language = typeof settings.language === "string" && /^[a-z-]{2,16}$/.test(settings.language) ? settings.language : "en";
+  const title = (subject?.title ?? "").trim();
+  if (!title) {
+    throw new PluginError("bad_subject", "This note has no title to look an article up by.");
+  }
+  const found = (await summaries(language, [title])).get(title);
+  if (!found) {
+    throw new PluginError("no_data", `Wikipedia has no article called \u201C${title}\u201D.`);
+  }
+  const links = await backlinks(language, found.title).catch(() => []);
+  return {
+    kind: "wikipedia-article",
+    text: articleText(language, found, links)
+  };
 }
 var plugin_default = () => serve(async ({ command, params }) => {
   if (command === "catalogue") {
@@ -2657,6 +2681,9 @@ var plugin_default = () => serve(async ({ command, params }) => {
   }
   if (command === "article") {
     return await article(params.subject);
+  }
+  if (command === "note-article") {
+    return await noteArticle(params.subject, params.settings ?? {});
   }
   throw new PluginError("unsupported", `Unknown command ${command}.`);
 });

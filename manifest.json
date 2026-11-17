@@ -4,7 +4,29 @@
   "name": "Wikipedia",
   "version": "0.1.0",
   "runtime": { "entry": "dist/plugin.js" },
-  "provides": [],
+  "provides": [
+    {
+      "data": "wikipedia-article",
+      "command": "note-article",
+      "timeoutMs": 20000,
+      "settings": [
+        {
+          "key": "language",
+          "kind": "select",
+          "label": "Which Wikipedia",
+          "description": "The language an article is looked up in when a note does not link to one itself.",
+          "default": "en",
+          "options": [
+            { "value": "en", "label": "English" },
+            { "value": "de", "label": "German" },
+            { "value": "fr", "label": "French" },
+            { "value": "es", "label": "Spanish" },
+            { "value": "simple", "label": "Simple English" }
+          ]
+        }
+      ]
+    }
+  ],
   "contributes": [
     {
       "id": "article",
