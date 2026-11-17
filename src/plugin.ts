@@ -80,8 +80,19 @@ async function catalogue(
   };
 }
 
+/**
+ * How the articles that link to one are written: as web links in the panel,
+ * and as `[[wiki links]]` in a note, where they name notes like the rest of a
+ * canvas does instead of opening a browser tab.
+ */
+type LinkStyle = "links" | "wiki";
+
 /** Markdown of one article: what it is, and what links to it. */
-function articleText(language: string, article: Article, links: string[]): string {
+function articleText(
+  read: { language: string; article: Article; backlinks: string[] },
+  style: LinkStyle,
+): string {
+  const { language, article, backlinks: links } = read;
   const lines = [`# ${article.title}`];
   if (article.description) {
     lines.push("", `*${article.description}*`);
@@ -92,7 +103,11 @@ function articleText(language: string, article: Article, links: string[]): strin
   if (links.length > 0) {
     lines.push("", "## Linked from");
     for (const title of links) {
-      lines.push(`- [${title}](${pageUrl(language, title)})`);
+      lines.push(
+        style === "wiki"
+          ? `- [[${title}]]`
+          : `- [${title}](${pageUrl(language, title)})`,
+      );
     }
   }
   lines.push("", `[Read on Wikipedia](${pageUrl(language, article.title)})`);
@@ -107,7 +122,7 @@ async function article(subject: Subject | undefined): Promise<Data> {
   const read = await readArticle(subject?.link?.url);
   return {
     kind: "wikipedia-article",
-    text: articleText(read.language, read.article, read.backlinks),
+    text: articleText(read, "links"),
   };
 }
 
@@ -121,7 +136,13 @@ async function noteArticle(
   settings: Record<string, unknown>,
 ): Promise<Data> {
   if (subject?.link?.url) {
-    return await article(subject);
+    // A note reads the way notes here do: the articles linking to it are wiki
+    // links, so they point at notes on the canvas rather than at the web.
+    const read = await readArticle(subject.link.url);
+    return {
+      kind: "wikipedia-article",
+      text: articleText(read, "wiki"),
+    };
   }
 
   const language =
@@ -148,7 +169,7 @@ async function noteArticle(
   const links = await backlinks(language, found.title).catch(() => []);
   return {
     kind: "wikipedia-article",
-    text: articleText(language, found, links),
+    text: articleText({ language, article: found, backlinks: links }, "wiki"),
   };
 }
 

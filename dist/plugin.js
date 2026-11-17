@@ -2631,7 +2631,8 @@ async function catalogue(settings, paging) {
     text: JSON.stringify({ items, known: [], hasMore: page.hasMore })
   };
 }
-function articleText(language, article, links) {
+function articleText(read, style) {
+  const { language, article, backlinks: links } = read;
   const lines = [`# ${article.title}`];
   if (article.description) {
     lines.push("", `*${article.description}*`);
@@ -2642,7 +2643,7 @@ function articleText(language, article, links) {
   if (links.length > 0) {
     lines.push("", "## Linked from");
     for (const title of links) {
-      lines.push(`- [${title}](${pageUrl(language, title)})`);
+      lines.push(style === "wiki" ? `- [[${title}]]` : `- [${title}](${pageUrl(language, title)})`);
     }
   }
   lines.push("", `[Read on Wikipedia](${pageUrl(language, article.title)})`);
@@ -2653,12 +2654,16 @@ async function article(subject) {
   const read = await readArticle(subject?.link?.url);
   return {
     kind: "wikipedia-article",
-    text: articleText(read.language, read.article, read.backlinks)
+    text: articleText(read, "links")
   };
 }
 async function noteArticle(subject, settings) {
   if (subject?.link?.url) {
-    return await article(subject);
+    const read = await readArticle(subject.link.url);
+    return {
+      kind: "wikipedia-article",
+      text: articleText(read, "wiki")
+    };
   }
   const language = typeof settings.language === "string" && /^[a-z-]{2,16}$/.test(settings.language) ? settings.language : "en";
   const title = (subject?.title ?? "").trim();
@@ -2672,7 +2677,7 @@ async function noteArticle(subject, settings) {
   const links = await backlinks(language, found.title).catch(() => []);
   return {
     kind: "wikipedia-article",
-    text: articleText(language, found, links)
+    text: articleText({ language, article: found, backlinks: links }, "wiki")
   };
 }
 var plugin_default = () => serve(async ({ command, params }) => {
