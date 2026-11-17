@@ -2442,6 +2442,7 @@ var TRANSPARENT_ALPHA = 128;
 var SAMPLE_SIZE = 64;
 var BUCKET_SHIFT = 4;
 var CHANNEL_MAX = 255;
+var HEX = /^#[0-9A-F]{6}$/;
 var PNG_SIGNATURE = [137, 80, 78, 71, 13, 10, 26, 10];
 var PNG_HEAD_BYTES = 8;
 var CHUNK_LENGTH_BYTES = 4;
@@ -2548,6 +2549,9 @@ async function keepStills(urls) {
   };
   await Promise.all(Array.from({ length: Math.min(CONCURRENCY, urls.length) }, worker));
   return names;
+}
+function isColor(value) {
+  return typeof value === "string" && HEX.test(value);
 }
 function channelOf(value) {
   return Math.min(CHANNEL_MAX, Math.max(0, Math.round(value))).toString(16).padStart(2, "0").toUpperCase();
@@ -2750,17 +2754,31 @@ function leadingColorOf(bytes) {
   }
   return best ? `#${channelOf(best.r / best.count)}${channelOf(best.g / best.count)}${channelOf(best.b / best.count)}` : null;
 }
+async function colourOf(name) {
+  const kept = await readFile(join2(mediaDirectory(), `${name}.color`), "utf8").catch(() => null);
+  const stored = kept?.trim() ?? "";
+  if (isColor(stored)) {
+    return stored;
+  }
+  const bytes = await readFile(join2(mediaDirectory(), name)).catch(() => null);
+  if (!bytes) {
+    return null;
+  }
+  const hex = leadingColorOf(new Uint8Array(bytes));
+  if (hex) {
+    await writeFile(join2(mediaDirectory(), `${name}.color`), hex).catch(() => {
+      return;
+    });
+  }
+  return hex;
+}
 async function coloursOf(names) {
   const colours = {};
   for (const name of names) {
     if (!name || colours[name]) {
       continue;
     }
-    const bytes = await readFile(join2(mediaDirectory(), name)).catch(() => null);
-    if (!bytes) {
-      continue;
-    }
-    const hex = leadingColorOf(new Uint8Array(bytes));
+    const hex = await colourOf(name);
     if (hex) {
       colours[name] = hex;
     }
@@ -2774,6 +2792,7 @@ var MIN_PER_PAGE = 5;
 var MAX_PER_PAGE = 50;
 var MAX_OVERVIEW = 600;
 var MAX_EXTRACT = 1200;
+var MAX_ROUNDS = 3;
 function languageOf(archive) {
   return archive.replace(/wiki$/, "") || "en";
 }
@@ -2791,35 +2810,52 @@ async function catalogue(settings, paging) {
   const { offset, limit } = pageOf(paging, perPage);
   const language = languageOf(archive);
   const query2 = typeof settings.query === "string" ? settings.query : "";
-  const page = await readTitles(archive, { query: query2, offset, limit });
-  const articles = await summaries(language, page.titles);
-  const found = page.titles.map((title) => articles.get(title) ?? null);
-  const covers = await keepStills(found.map((article) => article?.thumbnail ?? null));
-  const colours = await coloursOf(covers);
-  const cards = page.titles.map((title, index) => {
-    const article = found[index] ?? null;
-    const cover = covers[index] ?? null;
-    const extract = article?.extract ?? null;
-    return {
-      id: itemIdOf(article?.title ?? title),
-      title: article?.title ?? title,
-      overview: extract ? extract.slice(0, MAX_OVERVIEW) : article?.description ?? null,
-      cover,
-      color: cover ? colours[cover] ?? null : null,
-      url: pageUrl(language, article?.title ?? title)
-    };
-  });
   const seen = new Set;
-  const items = cards.filter((item) => {
-    if (seen.has(item.id)) {
-      return false;
+  const items = [];
+  let cursor = offset;
+  let hasMore = false;
+  for (let round = 0;round < MAX_ROUNDS && items.length < limit; round += 1) {
+    const page = await readTitles(archive, {
+      query: query2,
+      offset: cursor,
+      limit: limit - items.length
+    });
+    if (page.titles.length === 0) {
+      hasMore = false;
+      break;
     }
-    seen.add(item.id);
-    return true;
-  });
+    const articles = await summaries(language, page.titles);
+    const found = page.titles.map((title) => articles.get(title) ?? null);
+    const covers = await keepStills(found.map((article) => article?.thumbnail ?? null));
+    const colours = await coloursOf(covers);
+    for (const [index, title] of page.titles.entries()) {
+      const article = found[index] ?? null;
+      const name = article?.title ?? title;
+      const id = itemIdOf(name);
+      if (seen.has(id)) {
+        continue;
+      }
+      seen.add(id);
+      const cover = covers[index] ?? null;
+      const extract = article?.extract ?? null;
+      items.push({
+        id,
+        title: name,
+        overview: extract ? extract.slice(0, MAX_OVERVIEW) : article?.description ?? null,
+        cover,
+        color: cover ? colours[cover] ?? null : null,
+        url: pageUrl(language, name)
+      });
+    }
+    cursor += page.titles.length;
+    hasMore = page.hasMore;
+    if (!hasMore) {
+      break;
+    }
+  }
   return {
     kind: "wikipedia-catalogue",
-    text: JSON.stringify({ items, known: [], hasMore: page.hasMore })
+    text: JSON.stringify({ items, known: [], hasMore })
   };
 }
 function itemIdOf(title) {

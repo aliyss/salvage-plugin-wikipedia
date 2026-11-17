@@ -13,6 +13,18 @@ const MIN_PER_PAGE = 5;
 const MAX_PER_PAGE = 50;
 const MAX_OVERVIEW = 600;
 const MAX_EXTRACT = 1_200;
+/** Rounds one page may read, so a run of redirects cannot stall the canvas. */
+const MAX_ROUNDS = 3;
+
+/** One card of the canvas, as the app reads it. */
+type Card = {
+  id: string;
+  title: string;
+  overview: string | null;
+  cover: string | null;
+  color: string | null;
+  url: string;
+};
 
 /** `enwiki` is English Wikipedia, `simplewiki` is Simple English. */
 function languageOf(archive: string): string {
@@ -53,47 +65,71 @@ async function catalogue(
   const query = typeof settings.query === "string" ? settings.query : "";
 
   // The list of what exists is on this computer; what each one is, is not.
-  const page = await readTitles(archive, { query, offset, limit });
-  const articles = await summaries(language, page.titles);
+  const seen = new Set<string>();
+  const items: Card[] = [];
+  let cursor = offset;
+  let hasMore = false;
 
-  const found = page.titles.map((title) => articles.get(title) ?? null);
-  const covers = await keepStills(found.map((article) => article?.thumbnail ?? null));
-  const colours = await coloursOf(covers);
+  // A page is read in rounds. One round can end on a run of redirects that all
+  // lead to articles the page already holds, which would hand the canvas a
+  // short page and make it ask again at once; a round that leaves room reads
+  // on until the page is full or the index ends.
+  for (let round = 0; round < MAX_ROUNDS && items.length < limit; round += 1) {
+    const page = await readTitles(archive, {
+      query,
+      offset: cursor,
+      limit: limit - items.length,
+    });
+    if (page.titles.length === 0) {
+      hasMore = false;
+      break;
+    }
 
-  const cards = page.titles.map((title, index) => {
-    const article = found[index] ?? null;
-    const cover = covers[index] ?? null;
-    const extract = article?.extract ?? null;
-    return {
+    const articles = await summaries(language, page.titles);
+    const found = page.titles.map((title) => articles.get(title) ?? null);
+    const covers = await keepStills(
+      found.map((article) => article?.thumbnail ?? null),
+    );
+    const colours = await coloursOf(covers);
+
+    for (const [index, title] of page.titles.entries()) {
+      const article = found[index] ?? null;
       // Filed under the article it turned out to be, not the title that named
       // it: the index lists redirects beside the articles they lead to, and
       // Wikipedia answers every one of them with the same page. Filed under the
       // asked-for title, "9/11 attacks" and "September 11 attacks" were two
       // cards of one article, each owed its own note.
-      id: itemIdOf(article?.title ?? title),
-      title: article?.title ?? title,
-      overview: extract
-        ? extract.slice(0, MAX_OVERVIEW)
-        : (article?.description ?? null),
-      cover,
-      color: cover ? (colours[cover] ?? null) : null,
-      url: pageUrl(language, article?.title ?? title),
-    };
-  });
+      const name = article?.title ?? title;
+      const id = itemIdOf(name);
+      if (seen.has(id)) {
+        continue;
+      }
+      seen.add(id);
 
-  // Redirects that landed on the same article leave one card, not one each.
-  const seen = new Set<string>();
-  const items = cards.filter((item) => {
-    if (seen.has(item.id)) {
-      return false;
+      const cover = covers[index] ?? null;
+      const extract = article?.extract ?? null;
+      items.push({
+        id,
+        title: name,
+        overview: extract
+          ? extract.slice(0, MAX_OVERVIEW)
+          : (article?.description ?? null),
+        cover,
+        color: cover ? (colours[cover] ?? null) : null,
+        url: pageUrl(language, name),
+      });
     }
-    seen.add(item.id);
-    return true;
-  });
+
+    cursor += page.titles.length;
+    hasMore = page.hasMore;
+    if (!hasMore) {
+      break;
+    }
+  }
 
   return {
     kind: "wikipedia-catalogue",
-    text: JSON.stringify({ items, known: [], hasMore: page.hasMore }),
+    text: JSON.stringify({ items, known: [], hasMore }),
   };
 }
 

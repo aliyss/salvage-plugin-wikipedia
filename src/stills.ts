@@ -455,6 +455,33 @@ export function leadingColorOf(bytes: Uint8Array): string | null {
     : null;
 }
 
+/**
+ * The colour one filed picture leads with, read once in its life: it is kept
+ * in a small file beside the picture, so a canvas opening a page of cards does
+ * not decode thirty photographs to draw them.
+ */
+async function colourOf(name: string): Promise<string | null> {
+  const kept = await readFile(join(mediaDirectory(), `${name}.color`), "utf8").catch(
+    () => null,
+  );
+  const stored = kept?.trim() ?? "";
+  if (isColor(stored)) {
+    return stored;
+  }
+
+  const bytes = await readFile(join(mediaDirectory(), name)).catch(() => null);
+  if (!bytes) {
+    return null;
+  }
+  const hex = leadingColorOf(new Uint8Array(bytes));
+  if (hex) {
+    await writeFile(join(mediaDirectory(), `${name}.color`), hex).catch(
+      () => undefined,
+    );
+  }
+  return hex;
+}
+
 /** The colour each picture of a page leads with, by the name it is filed under. */
 export async function coloursOf(
   names: (string | null)[],
@@ -464,13 +491,7 @@ export async function coloursOf(
     if (!name || colours[name]) {
       continue;
     }
-    const bytes = await readFile(join(mediaDirectory(), name)).catch(
-      () => null,
-    );
-    if (!bytes) {
-      continue;
-    }
-    const hex = leadingColorOf(new Uint8Array(bytes));
+    const hex = await colourOf(name);
     if (hex) {
       colours[name] = hex;
     }
