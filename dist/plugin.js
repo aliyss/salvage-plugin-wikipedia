@@ -2855,7 +2855,7 @@ async function catalogue(settings, paging) {
   }
   return {
     kind: "wikipedia-catalogue",
-    text: JSON.stringify({ items, known: [], hasMore })
+    text: JSON.stringify({ items, known: [], hasMore, cursor })
   };
 }
 function itemIdOf(title) {

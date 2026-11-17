@@ -129,7 +129,10 @@ async function catalogue(
 
   return {
     kind: "wikipedia-catalogue",
-    text: JSON.stringify({ items, known: [], hasMore }),
+    // The cursor is the row this page stopped on, not the cards it drew: this
+    // catalogue skips redirect rows, so the two are not the same number and
+    // only this one can be read on from.
+    text: JSON.stringify({ items, known: [], hasMore, cursor }),
   };
 }
 
