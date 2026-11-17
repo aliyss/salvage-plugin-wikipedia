@@ -10,7 +10,12 @@ import type { Data, Paging, Subject } from "./sdk";
 
 const DEFAULT_PER_PAGE = 30;
 const MIN_PER_PAGE = 5;
-const MAX_PER_PAGE = 50;
+/**
+ * The widest page a canvas may ask for. A page costs one index read, one
+ * Wikipedia call per fifty titles and a picture per card, so the ceiling is the
+ * point where a cold page still answers in a couple of seconds.
+ */
+const MAX_PER_PAGE = 200;
 const MAX_OVERVIEW = 600;
 const MAX_EXTRACT = 1_200;
 /** Rounds one page may read, so a run of redirects cannot stall the canvas. */

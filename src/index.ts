@@ -13,8 +13,8 @@ import { join } from "node:path";
 
 import { PluginError } from "./sdk";
 
-/** Enough for one page, and a stop for a runaway answer. */
-const MAX_TITLES = 50;
+/** The widest page the catalogue serves, and a stop for a runaway answer. */
+const MAX_TITLES = 200;
 const MAX_QUERY = 60;
 
 function indexFile(archive: string): string {

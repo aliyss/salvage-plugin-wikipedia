@@ -2,7 +2,7 @@
   "pluginApiVersion": 1,
   "id": "salvage-plugin-wikipedia",
   "name": "Wikipedia",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "runtime": { "entry": "dist/plugin.js" },
   "provides": [
     {
@@ -101,10 +101,10 @@
         "key": "perPage",
         "kind": "number",
         "label": "How many titles",
-        "description": "The canvas asks for this many at a time and loads more as you scroll.",
+        "description": "The canvas asks for this many at a time and loads more as you scroll. A page wider than fifty costs a Wikipedia call per fifty titles and a picture per card, so the first page of a big number takes a few seconds.",
         "default": 30,
         "min": 5,
-        "max": 50
+        "max": 200
       }
     ]
   },

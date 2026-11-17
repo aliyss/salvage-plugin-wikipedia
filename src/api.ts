@@ -12,7 +12,10 @@ import { PluginError } from "./sdk";
 
 const TIMEOUT_MS = 12_000;
 const MAX_BYTES = 2_000_000;
+/** The most titles one Action API call may name. */
 const MAX_TITLES = 50;
+/** Calls in flight at once, so a wide page is not several round trips deep. */
+const CALL_WIDTH = 2;
 const MAX_BACKLINKS = 20;
 const MAX_BACKLINK_TITLE = 200;
 const THUMB_WIDTH = 480;
@@ -118,17 +121,13 @@ function query(language: string, params: Record<string, string>): URL {
 }
 
 /**
- * The articles a page names, by title. Titles Wikipedia renamed or redirects
- * away from are mapped back, so the card still finds its article.
+ * The articles one call can name, by title. Titles Wikipedia renamed or
+ * redirects away from are mapped back, so the card still finds its article.
  */
-export async function summaries(
+async function summariesOf(
   language: string,
-  titles: string[],
+  asked: string[],
 ): Promise<Map<string, Article>> {
-  const asked = [...new Set(titles.filter((title) => title.trim()))].slice(
-    0,
-    MAX_TITLES,
-  );
   const byTitle = new Map<string, Article>();
   if (asked.length === 0) {
     return byTitle;
@@ -202,6 +201,37 @@ export async function summaries(
     }
     if (found) {
       byTitle.set(title, found);
+    }
+  }
+  return byTitle;
+}
+
+/**
+ * The articles a page names, by title. One call names fifty titles and no more,
+ * so a page wider than that is asked for in batches, two calls at a time: a
+ * two-hundred card page is four calls and two round trips, not four.
+ */
+export async function summaries(
+  language: string,
+  titles: string[],
+): Promise<Map<string, Article>> {
+  const asked = [...new Set(titles.filter((title) => title.trim()))];
+  const byTitle = new Map<string, Article>();
+  const batches: string[][] = [];
+  for (let at = 0; at < asked.length; at += MAX_TITLES) {
+    batches.push(asked.slice(at, at + MAX_TITLES));
+  }
+
+  for (let at = 0; at < batches.length; at += CALL_WIDTH) {
+    const answers = await Promise.all(
+      batches
+        .slice(at, at + CALL_WIDTH)
+        .map((batch) => summariesOf(language, batch)),
+    );
+    for (const answer of answers) {
+      for (const [title, article] of answer) {
+        byTitle.set(title, article);
+      }
     }
   }
   return byTitle;

@@ -17,7 +17,8 @@ const TIMEOUT_MS = 10_000;
 const MAX_BYTES = 1_500_000;
 /** Enough of a sha256 to name one picture, and no more. */
 const HASH_CHARS = 32;
-const CONCURRENCY = 4;
+/** Pictures in flight at once: a wide page waits on its files, not on luck. */
+const CONCURRENCY = 8;
 const EXTENSIONS = ["jpg", "jpeg", "png", "webp", "avif", "gif"];
 /** A decoded pixel is four channels, and the alpha is the last of them. */
 const RGBA_CHANNELS = 4;

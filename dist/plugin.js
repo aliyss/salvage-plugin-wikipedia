@@ -2198,6 +2198,7 @@ async function serve(handler) {
 var TIMEOUT_MS = 12000;
 var MAX_BYTES = 2000000;
 var MAX_TITLES = 50;
+var CALL_WIDTH = 2;
 var MAX_BACKLINKS = 20;
 var MAX_BACKLINK_TITLE = 200;
 var THUMB_WIDTH = 480;
@@ -2272,8 +2273,7 @@ function query(language, params) {
   }
   return url;
 }
-async function summaries(language, titles) {
-  const asked = [...new Set(titles.filter((title) => title.trim()))].slice(0, MAX_TITLES);
+async function summariesOf(language, asked) {
   const byTitle = new Map;
   if (asked.length === 0) {
     return byTitle;
@@ -2339,6 +2339,23 @@ async function summaries(language, titles) {
   }
   return byTitle;
 }
+async function summaries(language, titles) {
+  const asked = [...new Set(titles.filter((title) => title.trim()))];
+  const byTitle = new Map;
+  const batches = [];
+  for (let at = 0;at < asked.length; at += MAX_TITLES) {
+    batches.push(asked.slice(at, at + MAX_TITLES));
+  }
+  for (let at = 0;at < batches.length; at += CALL_WIDTH) {
+    const answers = await Promise.all(batches.slice(at, at + CALL_WIDTH).map((batch) => summariesOf(language, batch)));
+    for (const answer2 of answers) {
+      for (const [title, article] of answer2) {
+        byTitle.set(title, article);
+      }
+    }
+  }
+  return byTitle;
+}
 async function backlinks(language, title) {
   const body = await readJson(query(language, {
     list: "backlinks",
@@ -2388,7 +2405,7 @@ async function readArticle(url) {
 import { Database } from "bun:sqlite";
 import { stat } from "fs/promises";
 import { join } from "path";
-var MAX_TITLES2 = 50;
+var MAX_TITLES2 = 200;
 var MAX_QUERY = 60;
 function indexFile(archive) {
   return join(process.env.SALVAGE_PLUGIN_DATA ?? ".", "downloads", `${archive}.sqlite`);
@@ -2433,7 +2450,7 @@ import { inflateSync } from "zlib";
 var TIMEOUT_MS2 = 1e4;
 var MAX_BYTES2 = 1500000;
 var HASH_CHARS = 32;
-var CONCURRENCY = 4;
+var CONCURRENCY = 8;
 var EXTENSIONS = ["jpg", "jpeg", "png", "webp", "avif", "gif"];
 var RGBA_CHANNELS = 4;
 var ALPHA_INDEX = 3;
@@ -2789,7 +2806,7 @@ async function coloursOf(names) {
 // src/plugin.ts
 var DEFAULT_PER_PAGE = 30;
 var MIN_PER_PAGE = 5;
-var MAX_PER_PAGE = 50;
+var MAX_PER_PAGE = 200;
 var MAX_OVERVIEW = 600;
 var MAX_EXTRACT = 1200;
 var MAX_ROUNDS = 3;
