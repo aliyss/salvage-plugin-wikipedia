@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-import { backlinks, pageUrl, readArticle, summaries } from "./api";
+import { articleOf, backlinks, pageUrl, readArticle, summaries } from "./api";
 import type { Article } from "./api";
 import { archiveOf, readTitles } from "./index";
 import { PluginError, serve } from "./sdk";
@@ -236,6 +236,37 @@ async function noteArticle(
   };
 }
 
+/**
+ * The description and lead picture of the article an entry links to, answered
+ * only for the fields a page's own preview lacked. One article is one call.
+ */
+async function preview(subject: Subject | undefined): Promise<Data> {
+  const found = articleOf(subject?.link?.url);
+  if (!found) {
+    throw new PluginError(
+      "bad_subject",
+      "This entry does not link to a Wikipedia article.",
+    );
+  }
+
+  const article = (await summaries(found.language, [found.title])).get(
+    found.title,
+  );
+  if (!article) {
+    throw new PluginError("no_data", "Wikipedia has no article by that name.");
+  }
+
+  return {
+    kind: "link-preview",
+    text: JSON.stringify({
+      title: article.title,
+      description:
+        article.description ?? article.extract?.slice(0, MAX_OVERVIEW) ?? null,
+      imageUrl: article.thumbnail,
+    }),
+  };
+}
+
 export default () =>
   serve(async ({ command, params }) => {
     if (command === "catalogue") {
@@ -246,6 +277,9 @@ export default () =>
     }
     if (command === "note-article") {
       return await noteArticle(params.subject, params.settings ?? {});
+    }
+    if (command === "preview") {
+      return await preview(params.subject);
     }
 
     throw new PluginError("unsupported", `Unknown command ${command}.`);

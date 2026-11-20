@@ -2,7 +2,7 @@
   "pluginApiVersion": 1,
   "id": "salvage-plugin-wikipedia",
   "name": "Wikipedia",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "runtime": { "entry": "dist/plugin.js" },
   "provides": [
     {
@@ -25,6 +25,12 @@
           ]
         }
       ]
+    },
+    {
+      "data": "link-preview",
+      "command": "preview",
+      "timeoutMs": 12000,
+      "settings": []
     }
   ],
   "contributes": [

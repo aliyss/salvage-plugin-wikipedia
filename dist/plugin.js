@@ -2923,6 +2923,24 @@ async function noteArticle(subject, settings) {
     text: articleText({ language, article: found, backlinks: links })
   };
 }
+async function preview(subject) {
+  const found = articleOf(subject?.link?.url);
+  if (!found) {
+    throw new PluginError("bad_subject", "This entry does not link to a Wikipedia article.");
+  }
+  const article2 = (await summaries(found.language, [found.title])).get(found.title);
+  if (!article2) {
+    throw new PluginError("no_data", "Wikipedia has no article by that name.");
+  }
+  return {
+    kind: "link-preview",
+    text: JSON.stringify({
+      title: article2.title,
+      description: article2.description ?? article2.extract?.slice(0, MAX_OVERVIEW) ?? null,
+      imageUrl: article2.thumbnail
+    })
+  };
+}
 var plugin_default = () => serve(async ({ command, params }) => {
   if (command === "catalogue") {
     return await catalogue(params.settings ?? {}, params.paging);
@@ -2932,6 +2950,9 @@ var plugin_default = () => serve(async ({ command, params }) => {
   }
   if (command === "note-article") {
     return await noteArticle(params.subject, params.settings ?? {});
+  }
+  if (command === "preview") {
+    return await preview(params.subject);
   }
   throw new PluginError("unsupported", `Unknown command ${command}.`);
 });
