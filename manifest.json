@@ -2,7 +2,7 @@
   "pluginApiVersion": 1,
   "id": "salvage-plugin-wikipedia",
   "name": "Wikipedia",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "runtime": { "entry": "dist/plugin.js" },
   "provides": [
     {
@@ -31,7 +31,21 @@
     {
       "id": "article",
       "slot": "entry.detail.link.action",
-      "ui": { "kind": "button", "label": "Wikipedia", "icon": "book" },
+      "when": {
+        "link.host": [
+          "en.wikipedia.org",
+          "de.wikipedia.org",
+          "fr.wikipedia.org",
+          "es.wikipedia.org",
+          "simple.wikipedia.org",
+          "en.m.wikipedia.org",
+          "de.m.wikipedia.org",
+          "fr.m.wikipedia.org",
+          "es.m.wikipedia.org",
+          "simple.m.wikipedia.org"
+        ]
+      },
+      "ui": { "kind": "button", "label": "Wikipedia", "icon": "wikipedia" },
       "view": "text",
       "command": "article",
       "timeoutMs": 25000
