@@ -1,6 +1,6 @@
 {
   "name": "salvage-plugin-wikipedia",
-  "version": "0.2.5",
+  "version": "0.2.6",
   "private": true,
   "type": "module",
   "description": "A Wikipedia canvas for Salvage, read from a title index on your own computer.",
