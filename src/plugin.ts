@@ -26,6 +26,8 @@ type Card = {
   id: string;
   title: string;
   overview: string | null;
+  /** The article's own picture, which the note a card opens keeps as its link. */
+  poster: string | null;
   cover: string | null;
   color: string | null;
   url: string;
