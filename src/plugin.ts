@@ -119,6 +119,9 @@ async function catalogue(
         overview: extract
           ? extract.slice(0, MAX_OVERVIEW)
           : (article?.description ?? null),
+        // The card draws the copy filed here, and the note the card opens keeps
+        // the article's own picture as its link image.
+        poster: article?.thumbnail ?? null,
         cover,
         color: cover ? (colours[cover] ?? null) : null,
         url: pageUrl(language, name),
